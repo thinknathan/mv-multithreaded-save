@@ -2,7 +2,7 @@ importScripts('../libs/pako.min.js');
 
 // Template by Gilad Dayagi
 // https://codeburst.io/promises-for-the-web-worker-9311b7831733
-async function doCalculation(data, cb) {
+async function deflateString(data, cb) {
     let result = null,
         err = null;
 
@@ -29,7 +29,7 @@ self.onmessage = function (msg) {
         payload
     } = msg.data;
 
-    doCalculation(payload, function (err, result) {
+    deflateString(payload, function (err, result) {
         const msg = {
             id,
             err,
