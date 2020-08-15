@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.00 Save files asynchronously and use deflate compression.
+ * @plugindesc v1.01 Save files asynchronously and use deflate compression.
  * @author Think_Nathan
  */
 
@@ -306,14 +306,4 @@ StorageManager.webStorageExists = function (savefileId) {
 StorageManager.removeWebStorage = function (savefileId) {
     var key = 'Save/' + this.webStorageKey(savefileId);
     localStorage.removeItem(key);
-};
-
-StorageManager.webStorageKey = function (savefileId) {
-    if (savefileId < 0) {
-        return 'MV Config';
-    } else if (savefileId === 0) {
-        return 'MV Global';
-    } else {
-        return 'MV File%1'.format(savefileId);
-    }
 };
