@@ -1,5 +1,10 @@
 importScripts('../libs/pako.min.js');
 
+/* @version v1.02
+ * Web worker that interfaces with Pako
+ * Returns a compressed string
+ */
+
 // Template by Gilad Dayagi
 // https://codeburst.io/promises-for-the-web-worker-9311b7831733
 async function deflateString(data, cb) {

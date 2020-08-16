@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.01 Save files asynchronously and use deflate compression.
+ * @plugindesc v1.02 Save files asynchronously and use deflate compression.
  * @author Think_Nathan
  */
 
@@ -81,8 +81,10 @@ StorageManager.compressData = async function (data) {
 };
 
 StorageManager.compressDataWithWorker = async function (data) {
-    const wrapper = new pakoWrapper();
+    let wrapper = new pakoWrapper();
     const compressed = await wrapper.compress(data);
+    wrapper.terminate();
+    wrapper = null;
     return compressed;
 };
 

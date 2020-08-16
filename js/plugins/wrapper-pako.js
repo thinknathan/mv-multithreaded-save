@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.00 Wrapper that allows a web worker to return a promise.
+ * @plugindesc v1.02 Wrapper that allows a web worker to return a promise.
  * @author Think_Nathan, Gilad Dayagi
  */
 
@@ -63,6 +63,10 @@
 
         compress(str) {
             return sendMsg(str, this.worker);
+        }
+        
+        terminate() {
+            this.worker.terminate();
         }
     }
 
