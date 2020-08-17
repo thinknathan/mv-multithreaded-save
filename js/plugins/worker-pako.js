@@ -1,6 +1,6 @@
 importScripts('../libs/pako.min.js');
 
-/* @version v1.02
+/* @version v1.0.3
  * Web worker that interfaces with Pako
  * Returns a compressed string
  */

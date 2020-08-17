@@ -1,32 +1,113 @@
 /*:
- * @plugindesc v1.02 Save files asynchronously and use deflate compression.
- * @author Think_Nathan
+ * @plugindesc v1.0.3 Save files asynchronously and use deflate compression.
+ * @author Think_Nathan, Gilad Dayagi
  */
 
-// =========================================
-// LocalForage Settings
-// =========================================
+/**
+ * =====================================================
+ * pakoWrapper
+ * Promise-based wrapper for a web worker that compresses strings
+ *
+ * @methods
+ *   compress({String})
+ *   terminate()
+ *     
+ * @credit Template by Gilad Dayagi
+ * =====================================================
+ */
+
+(function () {
+    const resolves = {};
+    const rejects = {};
+    let globalMsgId = 0;
+
+    // Activate calculation in the worker, returning a promise
+    function sendMsg(payload, worker) {
+        const msgId = globalMsgId++;
+        const msg = {
+            id: msgId,
+            payload,
+        }
+        return new Promise(function (resolve, reject) {
+            // save callbacks for later
+            resolves[msgId] = resolve;
+            rejects[msgId] = reject;
+            worker.postMessage(msg);
+        })
+    };
+
+    // Handle incoming calculation result
+    function handleMsg(msg) {
+        const {
+            id,
+            err,
+            payload,
+        } = msg.data;
+        if (payload) {
+            const resolve = resolves[id];
+            if (resolve) {
+                resolve(payload);
+            }
+        } else {
+            // error condition
+            const reject = rejects[id];
+            if (reject) {
+                if (err) {
+                    reject(err);
+                } else {
+                    reject('Got nothing');
+                }
+            }
+        }
+
+        // purge used callbacks
+        delete resolves[id];
+        delete rejects[id];
+    };
+
+    // Wrapper class
+    class pakoWrapper {
+        constructor() {
+            this.worker = new Worker('./js/plugins/worker-pako.js');
+            this.worker.onmessage = handleMsg;
+        }
+
+        compress(str) {
+            return sendMsg(str, this.worker);
+        }
+
+        terminate() {
+            this.worker.terminate();
+        }
+    }
+
+    window.pakoWrapper = pakoWrapper;
+})();
+
+/**
+ * LocalForage Settings
+ */
 localforage.config({
     name: 'Save',
     driver: localforage.LOCALSTORAGE
 });
 
-// =================================================================
-// =================================================================
-// DataManager
-// =================================================================
-// =================================================================
+/**
+ * =====================================================
+ * DataManager
+ * =====================================================
+ */
 
-// =========================================
-// New Helpers
-// =========================================
+/**
+ * New Helpers
+ */
 DataManager.stringifyData = async function (data) {
     return JsonEx.stringify(data);
 };
 
-// =========================================
-// Overrides
-// =========================================
+/**
+ * Overrides
+ */
 DataManager.saveGame = async function (savefileId) {
     try {
         await StorageManager.backup(savefileId);
@@ -56,15 +137,15 @@ DataManager.saveGameWithoutRescue = async function (savefileId) {
     return true;
 };
 
-// =================================================================
-// =================================================================
-// StorageManager
-// =================================================================
-// =================================================================
+/**
+ * =====================================================
+ * StorageManager
+ * =====================================================
+ */
 
-// =========================================
-// New Helpers
-// =========================================
+/**
+ * New Helpers
+ */
 Utils.supportsWorkers = function () {
     return !!(typeof Worker);
 };
@@ -131,9 +212,9 @@ StorageManager.makeLocalDirectory = async function (dirPath) {
     }
 };
 
-// =========================================
-// Overrides
-// =========================================
+/**
+ * Overrides
+ */
 StorageManager.save = function (savefileId, json) {
     if (this.isLocalMode()) {
         this.saveToLocalFile(savefileId, json);
@@ -180,9 +261,9 @@ StorageManager.restoreBackup = function (savefileId) {
     }
 };
 
-// =========================================
-// Local Overrides
-// =========================================
+/**
+ * Local Overrides
+ */
 StorageManager.backupLocal = async function (savefileId) {
     var data = await this.loadFromLocalFile(savefileId);
     var compressed = await StorageManager.compressData(data);
@@ -254,9 +335,9 @@ StorageManager.removeLocalFile = function (savefileId) {
     }
 };
 
-// =========================================
-// Web Overrides
-// =========================================
+/**
+ * Web Overrides
+ */
 StorageManager.backupWeb = async function (savefileId) {
     var data = this.loadFromWebStorage(savefileId);
     var compressed = await StorageManager.compressData(data);
