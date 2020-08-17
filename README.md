@@ -24,5 +24,5 @@ Probably not! I'm really only releasing it to inspire more talented people than 
 - Add script tags for localforage and pako into your index.html file
 - Copy the files from js/plugins into your own project's plugins folder.
 - Delete N_BloatSave if you don't want it. It's just for testing.
-- Activate N_SaveManager and wrapper-pako in your plugin manager.
+- Activate N_SaveManager in your plugin manager.
 - Do not activate worker-pako. It is not meant to be run in the browser.
