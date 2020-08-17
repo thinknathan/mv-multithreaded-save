@@ -29,10 +29,7 @@ async function deflateString(data, cb) {
 
 // Handle incoming messages
 self.onmessage = function (msg) {
-    const {
-        id,
-        payload
-    } = msg.data;
+    const { id, payload } = msg.data;
 
     deflateString(payload, function (err, result) {
         const msg = {
