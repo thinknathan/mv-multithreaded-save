@@ -183,12 +183,12 @@ StorageManager.decompressData = function (data) {
  */
 
 // Rewrite core method to split into separate functions
-StorageManager.backup = function (savefileId) {
+StorageManager.backup = async function (savefileId) {
     if (this.exists(savefileId)) {
         if (this.isLocalMode()) {
-            this.backupLocal(savefileId);
+            return await this.backupLocal(savefileId);
         } else {
-            this.backupWeb(savefileId);
+            return await this.backupWeb(savefileId);
         }
     }
 };
@@ -236,7 +236,8 @@ StorageManager.backupLocal = async function (savefileId) {
     var dirPath = this.localFileDirectoryPath();
     var filePath = this.localFilePath(savefileId) + ".bak";
     this.makeLocalDirectory(dirPath);
-    fs.promises.writeFile(filePath, compressed);
+    await fs.promises.writeFile(filePath, compressed);
+    return true;
 };
 
 // New async method
@@ -327,7 +328,8 @@ StorageManager.backupWeb = async function (savefileId) {
     var data = await this.loadFromWebStorageAsync(savefileId, true);
     var compressed = await this.compressDataWithWorker(data);
     var key = this.webStorageKey(savefileId) + "bak";
-    localforage.setItem(key, compressed);
+    await localforage.setItem(key, compressed);
+    return true;
 };
 
 // New method to use localforage
