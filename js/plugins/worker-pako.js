@@ -1,12 +1,12 @@
 importScripts('../libs/pako.min.js');
 
-/* @version v1.0.3
+/* @version v1.0.4
  * Web worker that interfaces with Pako
  * Returns a compressed string
+ * Template by Gilad Dayagi
  */
 
-// Template by Gilad Dayagi
-// https://codeburst.io/promises-for-the-web-worker-9311b7831733
+// Compresses a string
 async function deflateString(data, cb) {
     let result = null,
         err = null;
@@ -16,7 +16,29 @@ async function deflateString(data, cb) {
             to: "string",
             level: 1
         });
-        result = compressed;
+        const encoded = btoa(compressed);
+        result = encoded;
+    } else {
+        err = 'Not a string';
+    }
+
+    const delay = Math.ceil(Math.random() * 1000);
+    setTimeout(function () {
+        cb(err, result);
+    }, delay);
+};
+
+// Decompresses a string
+async function inflateString(data, cb) {
+    let result = null,
+        err = null;
+
+    if (typeof data === 'string') {
+        const decoded = atob(data);
+        const decompressed = await pako.inflate(decoded, {
+            to: "string"
+        });
+        result = decompressed;
     } else {
         err = 'Not a string';
     }
@@ -30,13 +52,19 @@ async function deflateString(data, cb) {
 // Handle incoming messages
 self.onmessage = function (msg) {
     const { id, payload } = msg.data;
+    const type = payload.requestType;
+    const data = payload.data;
 
-    deflateString(payload, function (err, result) {
-        const msg = {
-            id,
-            err,
-            payload: result,
-        }
-        self.postMessage(msg);
-    });
+    if (type === 'compress') {
+        deflateString(data, function (err, result) {
+            const msg = { id, err, payload: result }
+            self.postMessage(msg);
+        });
+    } else if (type === 'decompress') {
+        inflateString(data, function (err, result) {
+            const msg = { id, err, payload: result }
+            self.postMessage(msg);
+        });
+    }
+
 };
