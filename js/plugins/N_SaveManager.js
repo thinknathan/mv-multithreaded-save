@@ -190,6 +190,8 @@ StorageManager.backup = async function (savefileId) {
         } else {
             return await this.backupWeb(savefileId);
         }
+    } else {
+        return false;
     }
 };
 
