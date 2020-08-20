@@ -1,6 +1,6 @@
 importScripts('../libs/pako.min.js');
 
-/* @version v1.0.4
+/* @version v1.0.5
  * Web worker that interfaces with Pako
  * Returns a compressed string
  * Template by Gilad Dayagi

@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.0.4 Save files asynchronously and use deflate compression.
+ * @plugindesc v1.0.5 Save files asynchronously and use deflate compression.
  * @author Think_Nathan, Gilad Dayagi
  */
 
@@ -146,17 +146,6 @@ DataManager.saveGameWithoutRescue = async function (savefileId) {
  */
 
 // New helper
-StorageManager.decompressDataWithWorker = async function (data) {
-    if (data == null) return "";
-    if (data == "") return null;
-    let worker = new pakoWorker();
-    const decompressedAndDecoded = await worker.decompress(data);
-    worker.terminate();
-    worker = null;
-    return decompressedAndDecoded;
-};
-
-// New helper
 StorageManager.compressDataWithWorker = async function (data) {
     if (data == null) return "";
     let worker = new pakoWorker();
@@ -167,7 +156,6 @@ StorageManager.compressDataWithWorker = async function (data) {
 };
 
 // New helper
-// Synchronous fallback
 StorageManager.decompressData = function (data) {
     if (data == null) return "";
     if (data == "") return null;
@@ -233,12 +221,17 @@ StorageManager.makeLocalDirectory = function (dirPath) {
 // New async method
 StorageManager.backupLocal = async function (savefileId) {
     const fs = require('fs');
-    var data = this.loadFromLocalFile(savefileId, true);
-    var compressed = await this.compressDataWithWorker(data);
+    var data = null;
+    var filePath = this.localFilePath(savefileId);
+    var filePathBackup = filePath + ".bak";
     var dirPath = this.localFileDirectoryPath();
-    var filePath = this.localFilePath(savefileId) + ".bak";
+    if (fs.existsSync(filePath)) {
+        data = await fs.promises.readFile(filePath, {
+            encoding: 'utf8'
+        });
+    }
     this.makeLocalDirectory(dirPath);
-    await fs.promises.writeFile(filePath, compressed);
+    await fs.promises.writeFile(filePathBackup, data);
     return true;
 };
 
@@ -285,19 +278,6 @@ StorageManager.loadFromLocalFile = function (savefileId) {
     return this.decompressData(data);
 };
 
-// New async method
-StorageManager.loadFromLocalFileAsync = async function (savefileId) {
-    const fs = require('fs');
-    var data = null;
-    var filePath = this.localFilePath(savefileId);
-    if (fs.existsSync(filePath)) {
-        data = await fs.promises.readFile(filePath, {
-            encoding: 'utf8'
-        });
-    }
-    return await this.decompressDataWithWorker(data);
-};
-
 // Rewrite core method to use Pako
 StorageManager.loadFromLocalBackupFile = function (savefileId) {
     const fs = require('fs');
@@ -327,10 +307,10 @@ StorageManager.getFromLocalStorage = function (initialKey) {
 
 // New async method
 StorageManager.backupWeb = async function (savefileId) {
-    var data = await this.loadFromWebStorageAsync(savefileId, true);
-    var compressed = await this.compressDataWithWorker(data);
-    var key = this.webStorageKey(savefileId) + "bak";
-    await localforage.setItem(key, compressed);
+    var key = this.webStorageKey(savefileId);
+    var backupKey = key + "bak";
+    var data = this.getFromLocalStorage(key);
+    await localforage.setItem(backupKey, data);
     return true;
 };
 
@@ -361,13 +341,6 @@ StorageManager.loadFromWebStorage = function (savefileId, async) {
     var key = this.webStorageKey(savefileId);
     var data = this.getFromLocalStorage(key);
     return this.decompressData(data);
-};
-
-// New async method
-StorageManager.loadFromWebStorageAsync = async function (savefileId, async) {
-    var key = this.webStorageKey(savefileId);
-    var data = await localforage.getItem(key);
-    return await this.decompressDataWithWorker(data);
 };
 
 // Rewrite core method to use Pako
