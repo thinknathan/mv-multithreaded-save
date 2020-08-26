@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.0.5 Save files asynchronously and use deflate compression.
+ * @plugindesc v1.0.6 Save files asynchronously and use deflate compression.
  * @author Think_Nathan, Gilad Dayagi
  */
 
@@ -71,10 +71,101 @@ localforage.config({
         delete rejects[id];
     };
 
+    /**
+     * Web worker that interfaces with Pako
+     * Returns a compressed string
+     * Template by Gilad Dayagi
+     */
+    function workerScript() {
+        importScripts(location.hash.substring(1, location.hash.length));
+
+        // Compresses a string
+        async function deflateString(data, cb) {
+            let result = null,
+                err = null;
+
+            if (typeof data === 'string') {
+                const compressed = await pako.deflate(data, {
+                    to: "string",
+                    level: 1
+                });
+                const encoded = btoa(compressed);
+                result = encoded;
+            } else {
+                err = 'Not a string';
+            }
+
+            const delay = Math.ceil(Math.random() * 1000);
+            setTimeout(function () {
+                cb(err, result);
+            }, delay);
+        };
+
+        // Decompresses a string
+        async function inflateString(data, cb) {
+            let result = null,
+                err = null;
+
+            if (typeof data === 'string') {
+                const decoded = atob(data);
+                const decompressed = await pako.inflate(decoded, {
+                    to: "string"
+                });
+                result = decompressed;
+            } else {
+                err = 'Not a string';
+            }
+
+            const delay = Math.ceil(Math.random() * 1000);
+            setTimeout(function () {
+                cb(err, result);
+            }, delay);
+        };
+
+        // Handle incoming messages
+        self.onmessage = function (msg) {
+            const {
+                id,
+                payload
+            } = msg.data;
+            const type = payload.requestType;
+            const data = payload.data;
+
+            if (type === 'compress') {
+                deflateString(data, function (err, result) {
+                    const msg = {
+                        id,
+                        err,
+                        payload: result
+                    }
+                    self.postMessage(msg);
+                });
+            } else if (type === 'decompress') {
+                inflateString(data, function (err, result) {
+                    const msg = {
+                        id,
+                        err,
+                        payload: result
+                    }
+                    self.postMessage(msg);
+                });
+            }
+
+        };
+    };
+
     // Wrapper class
     class pakoWorker {
         constructor() {
-            this.worker = new Worker('./js/plugins/worker-pako.js');
+            // Sets up the worker as a blob
+            // Also sends the URL to import the Pako library
+            var location = window.location.href;
+            var directory = location.substring(0, location.lastIndexOf('/'));
+            var hash = '#' + directory + '/js/libs/pako.min.js';
+            var workerBlob = URL.createObjectURL(new Blob(["(" + workerScript.toString() + ")();"], {
+                type: "text/javascript"
+            })) + hash;
+            this.worker = new Worker(workerBlob);
             this.worker.onmessage = handleMsg;
         }
 
@@ -97,7 +188,7 @@ localforage.config({
         terminate() {
             this.worker.terminate();
         }
-    }
+    };
 
     window.pakoWorker = pakoWorker;
 })();
