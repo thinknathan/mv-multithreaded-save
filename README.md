@@ -17,12 +17,11 @@ NO! This code uses the same external libraries as MZ (localforage and pako) so i
 
 ## Is this code ready for production?
 
-Probably not! I'm really only releasing it to inspire more talented people than me. Someone in the community must be a pro at using web workers, and I'd love to see them take this technology and really make it polished and stable.
+At first I only released this an inspiration for more talented programmers. But I've been using it for several weeks with no issues. Feel free to give it a try and report any bugs.
 
 ## How to use in your own project
 - Copy js/libs/localforage.min.js and js/libs/pako.min.js into your own js/libs
 - Add script tags for localforage and pako into your index.html file
 - Copy the files from js/plugins into your own project's plugins folder.
-- Delete N_BloatSave if you don't want it. It's just for testing.
+    - Delete N_BloatSave if you don't want it. It's just for testing.
 - Activate N_SaveManager in your plugin manager.
-- Do not activate worker-pako. It is not meant to be run in the browser.
