@@ -202,7 +202,6 @@ localforage.config({
 // Rewrite core method to be async
 DataManager.saveGame = async function (savefileId) {
     try {
-        SceneManager.addSaveMessage('Saving');
         await StorageManager.backup(savefileId);
         return await this.saveGameWithoutRescue(savefileId);
     } catch (e) {
@@ -458,77 +457,4 @@ StorageManager.webStorageExists = function (savefileId) {
 StorageManager.removeWebStorage = function (savefileId) {
     var key = 'Save/' + this.webStorageKey(savefileId);
     localStorage.removeItem(key);
-};
-
-
-/**
- * Window_SaveMessage
- * =====================================================
- */
-
-function Window_SaveMessage() {
-    this.initialize.apply(this, arguments);
-}
-
-Window_SaveMessage.prototype = Object.create(Window_Base.prototype);
-Window_SaveMessage.prototype.constructor = Window_SaveMessage;
-
-Window_SaveMessage.prototype.initialize = function () {
-    var width = 200;
-    var height = this.lineHeight() * 2;
-    var x = Graphics.boxWidth - width;
-    var y = Graphics.boxHeight - height;
-    Window_Base.prototype.initialize.call(this, x, y, width, height);
-    this._duration = 0;
-    this._openness = 0;
-};
-
-Window_SaveMessage.prototype.update = function () {
-    Window_Base.prototype.update.call(this);
-    if (this._duration > 0) {
-        this._duration--;
-    } else if (this._duration === 0) {
-        this.contents.clear();
-        this.close();
-    }
-};
-
-Window_SaveMessage.prototype.addMessage = function (message) {
-    this._duration = 60;
-    this.contents.drawText(message, 0, 0, 200 - (this.standardPadding() * 2), 30, 'center');
-    this.open();
-};
-
-
-/**
- * SceneManager
- * =====================================================
- */
-
-SceneManager.createSaveMessageWindow = function () {
-    if (!this._scene) return;
-    this._scene._saveMessageWindow = new Window_SaveMessage();
-    this._scene.addChild(this._scene._saveMessageWindow);
-};
-
-SceneManager.addSaveMessage = function (message) {
-    if (this._scene && !this._scene._saveMessageWindow) {
-        this.createSaveMessageWindow();
-    }
-    this._scene._saveMessageWindow.addMessage(message);
-};
-
-
-/**
- * Scene_Base
- * =====================================================
- */
-
-var Scene_Base_prototype_terminate = Scene_Base.prototype.terminate;
-Scene_Base.prototype.terminate = function () {
-    Scene_Base_prototype_terminate.call(this);
-    if (this._saveMessageWindow) {
-        this.removeChild(this._saveMessageWindow);
-        this._saveMessageWindow = null;
-    }
 };
