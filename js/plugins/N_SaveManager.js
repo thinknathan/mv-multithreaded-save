@@ -1,5 +1,5 @@
 /*:
- * @plugindesc v1.0.6 Save files asynchronously and use deflate compression.
+ * @plugindesc v1.0.7 Save files asynchronously and use deflate compression.
  * @author Think_Nathan, Gilad Dayagi
  */
 
@@ -201,10 +201,14 @@ localforage.config({
 
 // Rewrite core method to be async
 DataManager.saveGame = async function (savefileId) {
+    if (savefileId > 0) {
+        $gameTemp._isCurrentlySaving = true;
+        //console.log('Save Start', performance.now());
+    }
+
     try {
-        SceneManager.addSaveMessage('Saving');
         await StorageManager.backup(savefileId);
-        return await this.saveGameWithoutRescue(savefileId);
+        return this.saveGameWithoutRescue(savefileId);
     } catch (e) {
         console.error(e);
         try {
@@ -213,22 +217,9 @@ DataManager.saveGame = async function (savefileId) {
         } catch (e2) {
             console.error(e2);
         }
+        $gameTemp._isCurrentlySaving = false;
         return false;
     }
-};
-
-// Rewrite core method to be async
-DataManager.saveGameWithoutRescue = async function (savefileId) {
-    var json = JsonEx.stringify(this.makeSaveContents());
-    if (json.length >= 200000) {
-        console.warn('Save data too big!');
-    }
-    await StorageManager.save(savefileId, json);
-    this._lastAccessedId = savefileId;
-    var globalInfo = this.loadGlobalInfo() || [];
-    globalInfo[savefileId] = this.makeSavefileInfo();
-    await this.saveGlobalInfo(globalInfo);
-    return true;
 };
 
 
@@ -255,6 +246,14 @@ StorageManager.decompressData = function (data) {
     return pako.inflate(decoded, {
         to: "string"
     });
+};
+
+// New helper
+StorageManager.asyncSaveComplete = function (savefileId) {
+    if (savefileId > 0) {
+        $gameTemp._isCurrentlySaving = false;
+        //console.log('Save Complete', performance.now());
+    }
 };
 
 
@@ -354,7 +353,11 @@ StorageManager.saveToLocalFile = async function (savefileId, json) {
     var dirPath = this.localFileDirectoryPath();
     var filePath = this.localFilePath(savefileId);
     this.makeLocalDirectory(dirPath);
-    fs.promises.writeFile(filePath, data);
+    fs.promises.writeFile(filePath, data).then(
+        function () {
+            StorageManager.asyncSaveComplete(savefileId);
+        }
+    );
 };
 
 // Rewrite core method to use Pako
@@ -425,7 +428,11 @@ StorageManager.restoreBackupWeb = async function (savefileId) {
 StorageManager.saveToWebStorage = async function (savefileId, json) {
     var key = this.webStorageKey(savefileId);
     var data = await this.compressDataWithWorker(json);
-    localforage.setItem(key, data);
+    localforage.setItem(key, data).then(
+        function () {
+            StorageManager.asyncSaveComplete(savefileId)
+        }
+    );
 };
 
 // Rewrite core method to use Pako
@@ -481,41 +488,36 @@ Window_SaveMessage.prototype.initialize = function () {
     Window_Base.prototype.initialize.call(this, x, y, width, height);
     this._duration = 0;
     this._openness = 0;
+    this._showingMessage = false;
+    this._closeTimerStarted = false;
 };
 
 Window_SaveMessage.prototype.update = function () {
     Window_Base.prototype.update.call(this);
+
+    if ($gameTemp) {
+        if ($gameTemp._isCurrentlySaving && this._showingMessage === false) {
+            this.addMessage('Saving');
+        } else if (!$gameTemp._isCurrentlySaving && this._showingMessage && this._closeTimerStarted === false) {
+            this._duration = 20;
+            this._closeTimerStarted = true;
+        }
+    }
+
     if (this._duration > 0) {
         this._duration--;
-    } else if (this._duration === 0) {
+    } else if (this._showingMessage && this._closeTimerStarted) {
+        this._showingMessage = false;
+        this._closeTimerStarted = false;
         this.contents.clear();
         this.close();
     }
 };
 
 Window_SaveMessage.prototype.addMessage = function (message) {
-    this._duration = 60;
     this.contents.drawText(message, 0, 0, 200 - (this.standardPadding() * 2), 30, 'center');
+    this._showingMessage = true;
     this.open();
-};
-
-
-/**
- * SceneManager
- * =====================================================
- */
-
-SceneManager.createSaveMessageWindow = function () {
-    if (!this._scene) return;
-    this._scene._saveMessageWindow = new Window_SaveMessage();
-    this._scene.addChild(this._scene._saveMessageWindow);
-};
-
-SceneManager.addSaveMessage = function (message) {
-    if (this._scene && !this._scene._saveMessageWindow) {
-        this.createSaveMessageWindow();
-    }
-    this._scene._saveMessageWindow.addMessage(message);
 };
 
 
@@ -524,11 +526,34 @@ SceneManager.addSaveMessage = function (message) {
  * =====================================================
  */
 
-var Scene_Base_prototype_terminate = Scene_Base.prototype.terminate;
-Scene_Base.prototype.terminate = function () {
-    Scene_Base_prototype_terminate.call(this);
-    if (this._saveMessageWindow) {
-        this.removeChild(this._saveMessageWindow);
-        this._saveMessageWindow = null;
+// New Method
+Scene_Base.prototype.createSaveMessageWindow = function () {
+    if (this._windowLayer) {
+        this._saveMessageWindow = new Window_SaveMessage();
+        this._windowLayer.addChild(this._saveMessageWindow);
     }
+};
+
+// New Method
+Scene_Base.prototype.addSaveMessage = function (message) {
+    if (!this._saveMessageWindow) {
+        this.createSaveMessageWindow();
+    }
+    if (this._saveMessageWindow) {
+        this._saveMessageWindow.addMessage(message);
+    }
+};
+
+// Alias Method
+var Scene_MenuBase_prototype_create = Scene_MenuBase.prototype.create;
+Scene_MenuBase.prototype.create = function () {
+    Scene_MenuBase_prototype_create.call(this);
+    this.createSaveMessageWindow();
+};
+
+// Alias Method
+var Scene_Map_prototype_createAllWindows = Scene_Map.prototype.createAllWindows;
+Scene_Map.prototype.createAllWindows = function () {
+    Scene_Map_prototype_createAllWindows.call(this);
+    this.createSaveMessageWindow();
 };
