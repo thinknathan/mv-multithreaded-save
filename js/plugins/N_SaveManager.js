@@ -23,6 +23,8 @@ localforage.config({
  * =====================================================
  */
 (function () {
+    'use strict';
+
     const resolves = {};
     const rejects = {};
     let globalMsgId = 0;
@@ -191,369 +193,370 @@ localforage.config({
     };
 
     window.pakoWorker = pakoWorker;
-})();
 
 
-/**
- * DataManager
- * =====================================================
- */
+    /**
+     * DataManager
+     * =====================================================
+     */
 
-// Rewrite core method to be async
-DataManager.saveGame = async function (savefileId) {
-    if (savefileId > 0) {
-        $gameTemp._isCurrentlySaving = true;
-        //console.log('Save Start', performance.now());
-    }
+    // Rewrite core method to be async
+    DataManager.saveGame = async function (savefileId) {
+        if (savefileId > 0) {
+            $gameTemp._isCurrentlySaving = true;
+            //console.log('Save Start', performance.now());
+        }
 
-    try {
-        await StorageManager.backup(savefileId);
-        return this.saveGameWithoutRescue(savefileId);
-    } catch (e) {
-        console.error(e);
         try {
-            StorageManager.remove(savefileId);
-            StorageManager.restoreBackup(savefileId);
-        } catch (e2) {
-            console.error(e2);
+            await StorageManager.backup(savefileId);
+            return this.saveGameWithoutRescue(savefileId);
+        } catch (e) {
+            console.error(e);
+            try {
+                StorageManager.remove(savefileId);
+                StorageManager.restoreBackup(savefileId);
+            } catch (e2) {
+                console.error(e2);
+            }
+            $gameTemp._isCurrentlySaving = false;
+            return false;
         }
-        $gameTemp._isCurrentlySaving = false;
-        return false;
-    }
-};
+    };
 
 
-/**
- * StorageManager
- * =====================================================
- */
+    /**
+     * StorageManager
+     * =====================================================
+     */
 
-// New helper
-StorageManager.compressDataWithWorker = async function (data) {
-    if (data == null) return "";
-    let worker = new pakoWorker();
-    const compressedAndEncoded = await worker.compress(data);
-    worker.terminate();
-    worker = null;
-    return compressedAndEncoded;
-};
+    // New helper
+    StorageManager.compressDataWithWorker = async function (data) {
+        if (data == null) return "";
+        let worker = new pakoWorker();
+        const compressedAndEncoded = await worker.compress(data);
+        worker.terminate();
+        worker = null;
+        return compressedAndEncoded;
+    };
 
-// New helper
-StorageManager.decompressData = function (data) {
-    if (data == null) return "";
-    if (data == "") return null;
-    const decoded = atob(data);
-    return pako.inflate(decoded, {
-        to: "string"
-    });
-};
-
-// New helper
-StorageManager.asyncSaveComplete = function (savefileId) {
-    if (savefileId > 0) {
-        $gameTemp._isCurrentlySaving = false;
-        //console.log('Save Complete', performance.now());
-    }
-};
-
-
-/**
- * Overrides
- */
-
-// Rewrite core method to split into separate functions
-StorageManager.backup = async function (savefileId) {
-    if (this.exists(savefileId)) {
-        if (this.isLocalMode()) {
-            return await this.backupLocal(savefileId);
-        } else {
-            return await this.backupWeb(savefileId);
-        }
-    } else {
-        return false;
-    }
-};
-
-// Rewrite core method to split into separate functions
-StorageManager.cleanBackup = function (savefileId) {
-    if (this.backupExists(savefileId)) {
-        if (this.isLocalMode()) {
-            this.cleanBackupLocal(savefileId);
-        } else {
-            this.cleanBackupWeb(savefileId);
-        }
-    }
-};
-
-// Rewrite core method to split into separate functions
-StorageManager.restoreBackup = function (savefileId) {
-    if (this.backupExists(savefileId)) {
-        if (this.isLocalMode()) {
-            this.restoreBackupLocal(savefileId);
-        } else {
-            this.restoreBackupWeb(savefileId);
-        }
-    }
-};
-
-
-/**
- * Local Pathway
- */
-
-// New helper
-StorageManager.makeLocalDirectory = function (dirPath) {
-    const fs = require('fs');
-    if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath);
-    }
-};
-
-// New async method
-StorageManager.backupLocal = async function (savefileId) {
-    const fs = require('fs');
-    var data = null;
-    var filePath = this.localFilePath(savefileId);
-    var filePathBackup = filePath + ".bak";
-    var dirPath = this.localFileDirectoryPath();
-    if (fs.existsSync(filePath)) {
-        data = await fs.promises.readFile(filePath, {
-            encoding: 'utf8'
+    // New helper
+    StorageManager.decompressData = function (data) {
+        if (data == null) return "";
+        if (data == "") return null;
+        const decoded = atob(data);
+        return pako.inflate(decoded, {
+            to: "string"
         });
-    }
-    this.makeLocalDirectory(dirPath);
-    await fs.promises.writeFile(filePathBackup, data);
-    return true;
-};
+    };
 
-// New async method
-StorageManager.cleanBackupLocal = function (savefileId) {
-    const fs = require('fs');
-    var dirPath = this.localFileDirectoryPath();
-    var filePath = this.localFilePath(savefileId);
-    fs.promises.unlink(filePath + ".bak");
-};
-
-// New async method
-StorageManager.restoreBackupLocal = async function (savefileId) {
-    const fs = require('fs');
-    var data = this.loadFromLocalBackupFile(savefileId);
-    var compressed = await this.compressDataWithWorker(data);
-    var dirPath = this.localFileDirectoryPath();
-    var filePath = this.localFilePath(savefileId);
-    this.makeLocalDirectory(dirPath);
-    await fs.promises.writeFile(filePath, compressed);
-    fs.promises.unlink(filePath + ".bak");
-};
-
-// Rewrite core method to be async
-StorageManager.saveToLocalFile = async function (savefileId, json) {
-    const fs = require('fs');
-    var data = await this.compressDataWithWorker(json);
-    var dirPath = this.localFileDirectoryPath();
-    var filePath = this.localFilePath(savefileId);
-    this.makeLocalDirectory(dirPath);
-    fs.promises.writeFile(filePath, data).then(
-        function () {
-            StorageManager.asyncSaveComplete(savefileId);
+    // New helper
+    StorageManager.asyncSaveComplete = function (savefileId) {
+        if (savefileId > 0) {
+            $gameTemp._isCurrentlySaving = false;
+            //console.log('Save Complete', performance.now());
         }
-    );
-};
-
-// Rewrite core method to use Pako
-StorageManager.loadFromLocalFile = function (savefileId) {
-    const fs = require('fs');
-    var data = null;
-    var filePath = this.localFilePath(savefileId);
-    if (fs.existsSync(filePath)) {
-        data = fs.readFileSync(filePath, {
-            encoding: 'utf8'
-        });
-    }
-    return this.decompressData(data);
-};
-
-// Rewrite core method to use Pako
-StorageManager.loadFromLocalBackupFile = function (savefileId) {
-    const fs = require('fs');
-    var data = null;
-    var filePath = this.localFilePath(savefileId) + ".bak";
-    if (fs.existsSync(filePath)) {
-        data = fs.readFileSync(filePath, {
-            encoding: 'utf8'
-        });
-    }
-    return this.decompressData(data);
-};
+    };
 
 
-/**
- * Web Pathway
- */
+    /**
+     * Overrides
+     */
 
-// New helper
-StorageManager.getFromLocalStorage = function (initialKey) {
-    const key = 'Save/' + initialKey;
-    const data = localStorage.getItem(key);
-    if (data == null) return "";
-    if (data == "") return null;
-    return data.substring(1, data.length - 1);
-};
-
-// New async method
-StorageManager.backupWeb = async function (savefileId) {
-    var key = this.webStorageKey(savefileId);
-    var backupKey = key + "bak";
-    var data = this.getFromLocalStorage(key);
-    await localforage.setItem(backupKey, data);
-    return true;
-};
-
-// New method to use localforage
-StorageManager.cleanBackupWeb = function (savefileId) {
-    var key = this.webStorageKey(savefileId);
-    localforage.removeItem(key + "bak");
-};
-
-// New async method
-StorageManager.restoreBackupWeb = async function (savefileId) {
-    var data = this.loadFromWebStorageBackup(savefileId);
-    var compressed = await this.compressDataWithWorker(data);
-    var key = this.webStorageKey(savefileId);
-    await localforage.setItem(key, compressed);
-    localforage.removeItem(key + "bak");
-};
-
-// Rewrite core method to be async
-StorageManager.saveToWebStorage = async function (savefileId, json) {
-    var key = this.webStorageKey(savefileId);
-    var data = await this.compressDataWithWorker(json);
-    localforage.setItem(key, data).then(
-        function () {
-            StorageManager.asyncSaveComplete(savefileId)
+    // Rewrite core method to split into separate functions
+    StorageManager.backup = async function (savefileId) {
+        if (this.exists(savefileId)) {
+            if (this.isLocalMode()) {
+                return await this.backupLocal(savefileId);
+            } else {
+                return await this.backupWeb(savefileId);
+            }
+        } else {
+            return false;
         }
-    );
-};
+    };
 
-// Rewrite core method to use Pako
-StorageManager.loadFromWebStorage = function (savefileId, async) {
-    var key = this.webStorageKey(savefileId);
-    var data = this.getFromLocalStorage(key);
-    return this.decompressData(data);
-};
-
-// Rewrite core method to use Pako
-StorageManager.loadFromWebStorageBackup = function (savefileId) {
-    var key = this.webStorageKey(savefileId) + "bak";
-    var data = this.getFromLocalStorage(key);
-    return this.decompressData(data);
-};
-
-// Rewrite core method because of key name change
-StorageManager.webStorageBackupExists = function (savefileId) {
-    var key = this.webStorageKey(savefileId) + "bak";
-    return !!this.getFromLocalStorage(key);
-};
-
-// Rewrite core method because of key name change
-StorageManager.webStorageExists = function (savefileId) {
-    var key = this.webStorageKey(savefileId);
-    return !!this.getFromLocalStorage(key);
-};
-
-// Rewrite core method because of key name change
-StorageManager.removeWebStorage = function (savefileId) {
-    var key = 'Save/' + this.webStorageKey(savefileId);
-    localStorage.removeItem(key);
-};
-
-
-/**
- * Window_SaveMessage
- * =====================================================
- */
-
-function Window_SaveMessage() {
-    this.initialize.apply(this, arguments);
-}
-
-Window_SaveMessage.prototype = Object.create(Window_Base.prototype);
-Window_SaveMessage.prototype.constructor = Window_SaveMessage;
-
-Window_SaveMessage.prototype.initialize = function () {
-    var width = 200;
-    var height = this.lineHeight() * 2;
-    var x = Graphics.boxWidth - width;
-    var y = Graphics.boxHeight - height;
-    Window_Base.prototype.initialize.call(this, x, y, width, height);
-    this._duration = 0;
-    this._openness = 0;
-    this._showingMessage = false;
-    this._closeTimerStarted = false;
-};
-
-Window_SaveMessage.prototype.update = function () {
-    Window_Base.prototype.update.call(this);
-
-    if ($gameTemp) {
-        if ($gameTemp._isCurrentlySaving && this._showingMessage === false) {
-            this.addMessage('Saving');
-        } else if (!$gameTemp._isCurrentlySaving && this._showingMessage && this._closeTimerStarted === false) {
-            this._duration = 20;
-            this._closeTimerStarted = true;
+    // Rewrite core method to split into separate functions
+    StorageManager.cleanBackup = function (savefileId) {
+        if (this.backupExists(savefileId)) {
+            if (this.isLocalMode()) {
+                this.cleanBackupLocal(savefileId);
+            } else {
+                this.cleanBackupWeb(savefileId);
+            }
         }
+    };
+
+    // Rewrite core method to split into separate functions
+    StorageManager.restoreBackup = function (savefileId) {
+        if (this.backupExists(savefileId)) {
+            if (this.isLocalMode()) {
+                this.restoreBackupLocal(savefileId);
+            } else {
+                this.restoreBackupWeb(savefileId);
+            }
+        }
+    };
+
+
+    /**
+     * Local Pathway
+     */
+
+    // New helper
+    StorageManager.makeLocalDirectory = function (dirPath) {
+        const fs = require('fs');
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath);
+        }
+    };
+
+    // New async method
+    StorageManager.backupLocal = async function (savefileId) {
+        const fs = require('fs');
+        var data = null;
+        var filePath = this.localFilePath(savefileId);
+        var filePathBackup = filePath + ".bak";
+        var dirPath = this.localFileDirectoryPath();
+        if (fs.existsSync(filePath)) {
+            data = await fs.promises.readFile(filePath, {
+                encoding: 'utf8'
+            });
+        }
+        this.makeLocalDirectory(dirPath);
+        await fs.promises.writeFile(filePathBackup, data);
+        return true;
+    };
+
+    // New async method
+    StorageManager.cleanBackupLocal = function (savefileId) {
+        const fs = require('fs');
+        var dirPath = this.localFileDirectoryPath();
+        var filePath = this.localFilePath(savefileId);
+        fs.promises.unlink(filePath + ".bak");
+    };
+
+    // New async method
+    StorageManager.restoreBackupLocal = async function (savefileId) {
+        const fs = require('fs');
+        var data = this.loadFromLocalBackupFile(savefileId);
+        var compressed = await this.compressDataWithWorker(data);
+        var dirPath = this.localFileDirectoryPath();
+        var filePath = this.localFilePath(savefileId);
+        this.makeLocalDirectory(dirPath);
+        await fs.promises.writeFile(filePath, compressed);
+        fs.promises.unlink(filePath + ".bak");
+    };
+
+    // Rewrite core method to be async
+    StorageManager.saveToLocalFile = async function (savefileId, json) {
+        const fs = require('fs');
+        var data = await this.compressDataWithWorker(json);
+        var dirPath = this.localFileDirectoryPath();
+        var filePath = this.localFilePath(savefileId);
+        this.makeLocalDirectory(dirPath);
+        fs.promises.writeFile(filePath, data).then(
+            function () {
+                StorageManager.asyncSaveComplete(savefileId);
+            }
+        );
+    };
+
+    // Rewrite core method to use Pako
+    StorageManager.loadFromLocalFile = function (savefileId) {
+        const fs = require('fs');
+        var data = null;
+        var filePath = this.localFilePath(savefileId);
+        if (fs.existsSync(filePath)) {
+            data = fs.readFileSync(filePath, {
+                encoding: 'utf8'
+            });
+        }
+        return this.decompressData(data);
+    };
+
+    // Rewrite core method to use Pako
+    StorageManager.loadFromLocalBackupFile = function (savefileId) {
+        const fs = require('fs');
+        var data = null;
+        var filePath = this.localFilePath(savefileId) + ".bak";
+        if (fs.existsSync(filePath)) {
+            data = fs.readFileSync(filePath, {
+                encoding: 'utf8'
+            });
+        }
+        return this.decompressData(data);
+    };
+
+
+    /**
+     * Web Pathway
+     */
+
+    // New helper
+    StorageManager.getFromLocalStorage = function (initialKey) {
+        const key = 'Save/' + initialKey;
+        const data = localStorage.getItem(key);
+        if (data == null) return "";
+        if (data == "") return null;
+        return data.substring(1, data.length - 1);
+    };
+
+    // New async method
+    StorageManager.backupWeb = async function (savefileId) {
+        var key = this.webStorageKey(savefileId);
+        var backupKey = key + "bak";
+        var data = this.getFromLocalStorage(key);
+        await localforage.setItem(backupKey, data);
+        return true;
+    };
+
+    // New method to use localforage
+    StorageManager.cleanBackupWeb = function (savefileId) {
+        var key = this.webStorageKey(savefileId);
+        localforage.removeItem(key + "bak");
+    };
+
+    // New async method
+    StorageManager.restoreBackupWeb = async function (savefileId) {
+        var data = this.loadFromWebStorageBackup(savefileId);
+        var compressed = await this.compressDataWithWorker(data);
+        var key = this.webStorageKey(savefileId);
+        await localforage.setItem(key, compressed);
+        localforage.removeItem(key + "bak");
+    };
+
+    // Rewrite core method to be async
+    StorageManager.saveToWebStorage = async function (savefileId, json) {
+        var key = this.webStorageKey(savefileId);
+        var data = await this.compressDataWithWorker(json);
+        localforage.setItem(key, data).then(
+            function () {
+                StorageManager.asyncSaveComplete(savefileId)
+            }
+        );
+    };
+
+    // Rewrite core method to use Pako
+    StorageManager.loadFromWebStorage = function (savefileId, async) {
+        var key = this.webStorageKey(savefileId);
+        var data = this.getFromLocalStorage(key);
+        return this.decompressData(data);
+    };
+
+    // Rewrite core method to use Pako
+    StorageManager.loadFromWebStorageBackup = function (savefileId) {
+        var key = this.webStorageKey(savefileId) + "bak";
+        var data = this.getFromLocalStorage(key);
+        return this.decompressData(data);
+    };
+
+    // Rewrite core method because of key name change
+    StorageManager.webStorageBackupExists = function (savefileId) {
+        var key = this.webStorageKey(savefileId) + "bak";
+        return !!this.getFromLocalStorage(key);
+    };
+
+    // Rewrite core method because of key name change
+    StorageManager.webStorageExists = function (savefileId) {
+        var key = this.webStorageKey(savefileId);
+        return !!this.getFromLocalStorage(key);
+    };
+
+    // Rewrite core method because of key name change
+    StorageManager.removeWebStorage = function (savefileId) {
+        var key = 'Save/' + this.webStorageKey(savefileId);
+        localStorage.removeItem(key);
+    };
+
+
+    /**
+     * Window_SaveMessage
+     * =====================================================
+     */
+
+    function Window_SaveMessage() {
+        this.initialize.apply(this, arguments);
     }
 
-    if (this._duration > 0) {
-        this._duration--;
-    } else if (this._showingMessage && this._closeTimerStarted) {
+    Window_SaveMessage.prototype = Object.create(Window_Base.prototype);
+    Window_SaveMessage.prototype.constructor = Window_SaveMessage;
+
+    Window_SaveMessage.prototype.initialize = function () {
+        var width = 200;
+        var height = this.lineHeight() * 2;
+        var x = Graphics.boxWidth - width;
+        var y = Graphics.boxHeight - height;
+        Window_Base.prototype.initialize.call(this, x, y, width, height);
+        this._duration = 0;
+        this._openness = 0;
         this._showingMessage = false;
         this._closeTimerStarted = false;
-        this.contents.clear();
-        this.close();
-    }
-};
+    };
 
-Window_SaveMessage.prototype.addMessage = function (message) {
-    this.contents.drawText(message, 0, 0, 200 - (this.standardPadding() * 2), 30, 'center');
-    this._showingMessage = true;
-    this.open();
-};
+    Window_SaveMessage.prototype.update = function () {
+        Window_Base.prototype.update.call(this);
+
+        if ($gameTemp) {
+            if ($gameTemp._isCurrentlySaving && this._showingMessage === false) {
+                this.addMessage('Saving');
+            } else if (!$gameTemp._isCurrentlySaving && this._showingMessage && this._closeTimerStarted === false) {
+                this._duration = 20;
+                this._closeTimerStarted = true;
+            }
+        }
+
+        if (this._duration > 0) {
+            this._duration--;
+        } else if (this._showingMessage && this._closeTimerStarted) {
+            this._showingMessage = false;
+            this._closeTimerStarted = false;
+            this.contents.clear();
+            this.close();
+        }
+    };
+
+    Window_SaveMessage.prototype.addMessage = function (message) {
+        this.contents.drawText(message, 0, 0, 200 - (this.standardPadding() * 2), 30, 'center');
+        this._showingMessage = true;
+        this.open();
+    };
 
 
-/**
- * Scene_Base
- * =====================================================
- */
+    /**
+     * Scene_Base
+     * =====================================================
+     */
 
-// New Method
-Scene_Base.prototype.createSaveMessageWindow = function () {
-    if (this._windowLayer) {
-        this._saveMessageWindow = new Window_SaveMessage();
-        this._windowLayer.addChild(this._saveMessageWindow);
-    }
-};
+    // New Method
+    Scene_Base.prototype.createSaveMessageWindow = function () {
+        if (this._windowLayer) {
+            this._saveMessageWindow = new Window_SaveMessage();
+            this._windowLayer.addChild(this._saveMessageWindow);
+        }
+    };
 
-// New Method
-Scene_Base.prototype.addSaveMessage = function (message) {
-    if (!this._saveMessageWindow) {
+    // New Method
+    Scene_Base.prototype.addSaveMessage = function (message) {
+        if (!this._saveMessageWindow) {
+            this.createSaveMessageWindow();
+        }
+        if (this._saveMessageWindow) {
+            this._saveMessageWindow.addMessage(message);
+        }
+    };
+
+    // Alias Method
+    var Scene_MenuBase_prototype_create = Scene_MenuBase.prototype.create;
+    Scene_MenuBase.prototype.create = function () {
+        Scene_MenuBase_prototype_create.call(this);
         this.createSaveMessageWindow();
-    }
-    if (this._saveMessageWindow) {
-        this._saveMessageWindow.addMessage(message);
-    }
-};
+    };
 
-// Alias Method
-var Scene_MenuBase_prototype_create = Scene_MenuBase.prototype.create;
-Scene_MenuBase.prototype.create = function () {
-    Scene_MenuBase_prototype_create.call(this);
-    this.createSaveMessageWindow();
-};
+    // Alias Method
+    var Scene_Map_prototype_createAllWindows = Scene_Map.prototype.createAllWindows;
+    Scene_Map.prototype.createAllWindows = function () {
+        Scene_Map_prototype_createAllWindows.call(this);
+        this.createSaveMessageWindow();
+    };
 
-// Alias Method
-var Scene_Map_prototype_createAllWindows = Scene_Map.prototype.createAllWindows;
-Scene_Map.prototype.createAllWindows = function () {
-    Scene_Map_prototype_createAllWindows.call(this);
-    this.createSaveMessageWindow();
-};
+})();
